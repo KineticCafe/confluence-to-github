@@ -6,4 +6,5 @@
 attachments/
 entities.xml
 exportDescriptor.properties
+*.csv
 out/

@@ -1,0 +1,254 @@
+#!/bin/bash
+
+usage() {
+  cat <<USAGE
+Usage: $0 [options]
+       $0 -?|-h|--help|help
+
+Convert a Confluence XML space export to GitHub flavoured Markdown pages.
+
+Options
+
+--confluence-url, -u  Sets the URL for Confluence links. This should be the root
+                      URL, as the transformation scripts will add /wiki as
+                      required.
+--jira-url, -j        Sets the URL for JIRA links. Defaults to the Confluence
+                      URL. The transformation scripts will add /browse as
+                      required for ticket links.
+--output, -o          Sets the output path.
+--input, -i           Sets the input path.
+--skip-extract, -E    Skip the page extraction and image mapping step.
+--skip-images, -I     Skip the image copy step.
+--skip-markdown, -M   Skip the page conversion step.
+--force, -f           Force processing.
+--debug, -d           Enable debug output. May be repeated to increase debug
+                      level.
+
+Debug Levels
+
+0  (default)          No debug logging.
+1  (-d)               Tracing will be enabled to show the parameters to
+                      xsltproc.
+2  (-d -d)            The output of the image copy mapping script will be
+                      printed before execution. Unless --force is provided,
+                      confirmation will be required.
+3  (-d -d -d)         xsltproc verbose output will be enabled and the output
+                      will be saved in 'OUTPUT_PATH/log'. This logging is very
+                      verbose.
+USAGE
+}
+
+declare -a args xslt_params
+
+declare -i debug
+
+declare extract_pages copy_images convert_pages input_path output_path \
+  force working_path confluence_url jira_url
+force=false
+extract_pages=true
+copy_images=true
+convert_pages=true
+input_path=.
+output_path=out
+working_path="$(
+  cd "$(dirname "$0")" || exit 1
+  pwd -P
+)" || {
+  echo >&2 "Error setting working path."
+  exit 1
+}
+
+set -e
+
+while (($#)); do
+  case "$1" in
+  -\? | -h | --help | help)
+    usage
+    exit 0
+    ;;
+  --debug | -d)
+    ((debug++))
+    ;;
+  --force | -f) force=true ;;
+  --skip-extract | -E) extract_pages=false ;;
+  --skip-images | -I) copy_images=false ;;
+  --skip-markdown | -M) convert_pages=false ;;
+  --confluence-url | -u)
+    confluence_url="${2:?}"
+    xslt_params+=(--stringparam confluence-url "${2:?}")
+    shift
+    ;;
+  --jira-url | -j)
+    jira_url="${2:?}"
+    xslt_params+=(--stringparam jira-url "${2:?}")
+    shift
+    ;;
+  --output | -o)
+    output_path="${2:?}"
+    shift
+    ;;
+  --input | -i)
+    if ! [[ -d "${2:?}" ]]; then
+      echo >&2 "Input path ${2:?} does not exist."
+      exit 1
+    fi
+
+    input_path="${2:?}"
+    shift
+    ;;
+  *)
+    args+=("$1")
+    ;;
+  esac
+
+  shift
+done
+
+if ((debug > 0)); then
+  xslt_params+=(--stringparam debug "true")
+fi
+
+if ! command -v xsltproc >/dev/null 2>/dev/null; then
+  echo >&2 "This requires xsltproc to be present."
+  echo >&2 "Check your system instructions for installing libxslt and/or xsltproc."
+  exit 1
+fi
+
+if ! [[ -s "${input_path}/entities.xml" ]]; then
+  echo >&2 "Has a confluence space export been unzipped into ${input_path}?"
+  echo >&2 "Cannot find 'entities.xml' in that directory."
+  usage >&2
+  exit 1
+fi
+
+if [[ -d "${output_path}/page-xml" ]]; then
+  if ! "${extract_pages}" && ! "${force}"; then
+    echo >&2 "Extracted pages already exist. You may want to remove ${output_path} before generationg."
+    echo >&2 "Halting. Use --force to continue anyway."
+    usage >&2
+    exit 1
+  fi
+fi
+
+xslt_params+=(
+  --stringparam input-path "${input_path}"
+  --stringparam output-path "${output_path}"
+  --stringparam dtd-path "${working_path}"
+)
+
+echo "Input          : ${input_path}/entities.xml"
+echo "Output         : ${output_path}"
+[[ -n "${confluence_url}" ]] && echo "Confluence URL : ${confluence_url}"
+[[ -n "${jira_url}" ]] && echo "JIRA URL       : ${confluence_url}"
+echo "Steps"
+echo "        Extract: ${extract_pages}"
+echo "     Image Copy: ${copy_images}"
+echo "  Convert Pages: ${convert_pages}"
+"${force}" && echo "Force         : ${force}"
+((debug > 0)) && echo "Debug          : Level ${debug}"
+echo ""
+
+mkdir -p "${output_path}"/{page-xml,logs,wiki/images}
+
+if "${extract_pages}"; then
+  printf "Extracting page XML and image mapping\n"
+
+  set -e
+
+  if ((debug > 2)); then
+    set -x
+    xsltproc -v "${xslt_params[@]}" entities.xsl "${input_path}"/entities.xml 2>"${output_path}/logs/entities.log"
+    set +x
+  elif ((debug > 0)); then
+    set -x
+    xsltproc "${xslt_params[@]}" entities.xsl "${input_path}"/entities.xml
+    set +x
+  else
+    xsltproc "${xslt_params[@]}" entities.xsl "${input_path}"/entities.xml
+  fi
+
+  set +e
+
+  printf "Pages extracted.\n\n"
+fi
+
+if "${copy_images}"; then
+  if ! [[ -s "${output_path}"/image-mappings.xml ]]; then
+    echo >&2 "${output_path}/image-mappings.xml does not exist."
+    echo >&2 "The page extraction step needs to be run at least once."
+    exit 1
+  fi
+
+  if ! [[ -d "${input_path}/attachments" ]]; then
+    echo >&2 "Warning: Cannot find ${input_path}/attachments. Attachment copy may fail."
+  fi
+
+  printf "Copying images from attachments\n"
+
+  set -e
+
+  if ((debug > 1)); then
+    xsltproc "${xslt_params[@]}" image-mappings.xsl "${output_path}/image-mappings.xml"
+    "${force}" || read -t 5 -r -p "Press RETURN within 5 seconds to continue"
+  fi
+
+  if ((debug > 2)); then
+    set -x
+    xsltproc -v "${xslt_params[@]}" \
+      image-mappings.xsl \
+      "${output_path}/image-mappings.xml" \
+      2>"${output_path}/logs/image-mapping.log" |
+      bash
+    set +x
+  elif ((debug > 0)); then
+    set -x
+    xsltproc -v "${xslt_params[@]}" \
+      image-mappings.xsl \
+      "${output_path}/image-mappings.xml" \
+      bash
+    set +x
+  else
+    xsltproc "${xslt_params[@]}" \
+      image-mappings.xsl \
+      "${output_path}/image-mappings.xml" |
+      bash
+  fi
+
+  set +e
+
+  printf "Images copied.\n\n"
+fi
+
+if "${convert_pages}"; then
+  printf "Converting pages to markdown\n"
+
+  set -e
+
+  for page in "${output_path}"/page-xml/*.xml; do
+    xml=${page##${output_path}/page-xml/}
+    markdown="${output_path}/wiki/${xml%%.xml}.md"
+    log="${output_path}/logs/${xml%%.xml}.log"
+
+    if ((debug > 2)); then
+      set -x
+      xsltproc -v --path "${PWD}" \
+        "${xslt_params[@]}" \
+        page.xsl "${page}" >"${markdown}" 2>"${log}"
+      set +x
+    elif ((debug > 0)); then
+      set -x
+      xsltproc --path "${PWD}" \
+        "${xslt_params[@]}" \
+        page.xsl "${page}" >"${markdown}"
+      set +x
+    else
+      xsltproc --path "${PWD}" \
+        "${xslt_params[@]}" \
+        page.xsl "${page}" >"${markdown}"
+    fi
+  done
+
+  set +e
+
+  printf "Pages converted.\n"
+fi
