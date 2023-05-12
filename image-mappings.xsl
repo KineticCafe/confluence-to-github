@@ -7,6 +7,7 @@ Transform the image mapping xml to some bash commands
   <xsl:output method="text"/>
   <xsl:param name="input-path" select="'.'" />
   <xsl:param name="output-path" select="'out'" />
+  <xsl:param name="script-path" />
   <xsl:param name="debug" />
 
   <xsl:template match="image" mode="mkdir">

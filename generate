@@ -43,18 +43,18 @@ declare -a args xslt_params
 declare -i debug
 
 declare extract_pages copy_images convert_pages input_path output_path \
-  force working_path confluence_url jira_url
+  force script_path confluence_url jira_url
 force=false
 extract_pages=true
 copy_images=true
 convert_pages=true
 input_path=.
 output_path=out
-working_path="$(
+script_path="$(
   cd "$(dirname "$0")" || exit 1
   pwd -P
 )" || {
-  echo >&2 "Error setting working path."
+  echo >&2 "Error setting script path."
   exit 1
 }
 
@@ -133,7 +133,7 @@ fi
 xslt_params+=(
   --stringparam input-path "${input_path}"
   --stringparam output-path "${output_path}"
-  --stringparam dtd-path "${working_path}"
+  --stringparam script-path "${script_path}"
 )
 
 echo "Input          : ${input_path}/entities.xml"
@@ -204,7 +204,7 @@ if "${copy_images}"; then
     set -x
     xsltproc -v "${xslt_params[@]}" \
       image-mappings.xsl \
-      "${output_path}/image-mappings.xml" \
+      "${output_path}/image-mappings.xml" |
       bash
     set +x
   else

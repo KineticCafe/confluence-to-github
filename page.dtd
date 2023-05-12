@@ -66,7 +66,6 @@
 <!ENTITY agrave "&#224;">
 <!ENTITY alefsym "&#8501;">
 <!ENTITY alpha "&#945;">
-<!ENTITY amp "&#38;">
 <!ENTITY and "&#8743;">
 <!ENTITY ang "&#8736;">
 <!ENTITY apos "&#39;">
@@ -161,7 +160,6 @@
 <!ENTITY lsaquo "&#8249;">
 <!ENTITY lsqb "&#91;">
 <!ENTITY lsquo "&#8216;">
-<!ENTITY lt "&#60;">
 <!ENTITY macr "&#175;">
 <!ENTITY mdash "&#8212;">
 <!ENTITY micro "&#181;">

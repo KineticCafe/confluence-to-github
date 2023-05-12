@@ -11,7 +11,7 @@
   <xsl:output method="xml" standalone="yes" indent="yes"/>
 
   <xsl:param name="output-path" select="'out/'" />
-  <xsl:param name="dtd-path" select="'../..'" />
+  <xsl:param name="script-path" />
   <xsl:param name="debug" select="'false'" />
 
   <xsl:template name="to-lowercase">
@@ -120,7 +120,7 @@
         <xsl:text>&#x0a;</xsl:text>
       </xsl:message>
     </xsl:if>
-    <exsl:document href="{$output-path}/page-xml/{$page-filename}.xml" format="xml" standalone="no" indent="yes" doctype-system="{$dtd-path}/page.dtd">
+    <exsl:document href="{$output-path}/page-xml/{$page-filename}.xml" format="xml" standalone="no" indent="yes" doctype-system="{$script-path}/page.dtd">
       <page
         xmlns:ac="http://www.atlassian.com/schema/confluence/4/ac/"
         xmlns:ri="http://www.atlassian.com/schema/confluence/4/ri/"
@@ -234,6 +234,14 @@
   </xsl:template>
 
   <xsl:template match="/">
+    <xsl:if test="''=$script-path">
+      <xsl:message terminate="yes">
+        <xsl:text>The parameter script-path must be provided and point to the directory that</xsl:text>
+        <xsl:value-of select="$newline" />
+        <xsl:text>contains this file.</xsl:text>
+      </xsl:message>
+    </xsl:if>
+
     <!--
          export will include old versions of current pages and pages that
          have been deleted.
@@ -258,7 +266,7 @@
 
     <xsl:if test="$debug='true'">
       <xsl:message>
-        <xsl:text>Creating the attachment mapping file.
+        <xsl:text>Creating the attachment mapping file.</xsl:text>
       </xsl:message>
     </xsl:if>
 

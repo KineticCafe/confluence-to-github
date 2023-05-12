@@ -66,6 +66,7 @@
   <xsl:param name="jira-url" select="$confluence-url" />
   <xsl:param name="input-path" select="." />
   <xsl:param name="output-path" select="out" />
+  <xsl:param name="script-path" />
 
   <xsl:variable name="lower" select="'abcdefghijklmnopqrstuvwxyz'" />
   <xsl:variable name="upper" select="'ABCDEFGHIJKLMNOPQRSTUVWXYZ'" />
