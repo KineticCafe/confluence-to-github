@@ -9,9 +9,9 @@ Convert a Confluence XML space export to GitHub flavoured Markdown pages.
 
 Options
 
---confluence-url, -u  Sets the URL for Confluence links. This should be the root
-                      URL, as the transformation scripts will add /wiki as
-                      required.
+--confluence-url, -u  Sets the URL for Confluence links. This should be the
+                      root URL, as the transformation scripts will add /wiki
+                      as required.
 --jira-url, -j        Sets the URL for JIRA links. Defaults to the Confluence
                       URL. The transformation scripts will add /browse as
                       required for ticket links.
@@ -20,6 +20,8 @@ Options
 --skip-extract, -E    Skip the page extraction and image mapping step.
 --skip-images, -I     Skip the image copy step.
 --skip-markdown, -M   Skip the page conversion step.
+--clean, -C           Clean the output directory before execution. This will
+                      only clean the output required for each step.
 --force, -f           Force processing.
 --debug, -d           Enable debug output. May be repeated to increase debug
                       level.
@@ -38,13 +40,14 @@ Debug Levels
 USAGE
 }
 
-declare -a args xslt_params
+declare -a xslt_params
 
 declare -i debug
 
 declare extract_pages copy_images convert_pages input_path output_path \
-  force script_path confluence_url jira_url
+  force script_path confluence_url jira_url clean
 force=false
+clean=false
 extract_pages=true
 copy_images=true
 convert_pages=true
@@ -58,17 +61,14 @@ script_path="$(
   exit 1
 }
 
-set -e
-
 while (($#)); do
   case "$1" in
   -\? | -h | --help | help)
     usage
     exit 0
     ;;
-  --debug | -d)
-    ((debug++))
-    ;;
+  --clean | -C) clean=true ;;
+  --debug | -d) ((debug++)) ;;
   --force | -f) force=true ;;
   --skip-extract | -E) extract_pages=false ;;
   --skip-images | -I) copy_images=false ;;
@@ -97,7 +97,8 @@ while (($#)); do
     shift
     ;;
   *)
-    args+=("$1")
+    echo >&2 "Unknown parameter or options '$1'."
+    exit 1
     ;;
   esac
 
@@ -122,9 +123,10 @@ if ! [[ -s "${input_path}/entities.xml" ]]; then
 fi
 
 if [[ -d "${output_path}/page-xml" ]]; then
-  if ! "${extract_pages}" && ! "${force}"; then
-    echo >&2 "Extracted pages already exist. You may want to remove ${output_path} before generationg."
-    echo >&2 "Halting. Use --force to continue anyway."
+  if ! "${extract_pages}" && ! "${force}" && ! "${clean}"; then
+    echo >&2 "Extracted pages already exist. You may want to remove"
+    echo >&2 "${output_path} before generating."
+    echo >&2 "Halting. Use --force or --clean to continue anyway."
     usage >&2
     exit 1
   fi
@@ -136,43 +138,53 @@ xslt_params+=(
   --stringparam script-path "${script_path}"
 )
 
-echo "Input          : ${input_path}/entities.xml"
-echo "Output         : ${output_path}"
-[[ -n "${confluence_url}" ]] && echo "Confluence URL : ${confluence_url}"
-[[ -n "${jira_url}" ]] && echo "JIRA URL       : ${confluence_url}"
-echo "Steps"
-echo "        Extract: ${extract_pages}"
-echo "     Image Copy: ${copy_images}"
-echo "  Convert Pages: ${convert_pages}"
-"${force}" && echo "Force         : ${force}"
-((debug > 0)) && echo "Debug          : Level ${debug}"
-echo ""
+cat <<STEPS
+Input          : ${input_path}/entities.xml
+Output         : ${output_path}
+Confluence URL : ${confluence_url:-Not supplied}
+JIRA URL       : ${jira_url:-Not supplied}
+
+Steps
+        Extract: ${extract_pages}
+     Image Copy: ${copy_images}
+  Convert Pages: ${convert_pages}
+
+${force:+Overwrite enabled.}
+
+STEPS
+
+run() {
+  declare -i status
+
+  ((debug > 0)) && echo "$*"
+
+  if ! "$@"; then
+    status=$?
+    echo >&2 "Error ${status} running: $*"
+    exit ${status}
+  fi
+}
 
 mkdir -p "${output_path}"/{page-xml,logs,wiki/images}
 
 if "${extract_pages}"; then
+  "${clean}" && rm -rf "${output_path}/page-xml"
+  mkdir -p "${output_path}"/{page-xml,logs}
   printf "Extracting page XML and image mapping\n"
 
-  set -e
-
   if ((debug > 2)); then
-    set -x
-    xsltproc -v "${xslt_params[@]}" entities.xsl "${input_path}"/entities.xml 2>"${output_path}/logs/entities.log"
-    set +x
-  elif ((debug > 0)); then
-    set -x
-    xsltproc "${xslt_params[@]}" entities.xsl "${input_path}"/entities.xml
-    set +x
+    run xsltproc -v "${xslt_params[@]}" entities.xsl "${input_path}"/entities.xml 2>"${output_path}/logs/entities.log"
   else
-    xsltproc "${xslt_params[@]}" entities.xsl "${input_path}"/entities.xml
+    run xsltproc "${xslt_params[@]}" entities.xsl "${input_path}"/entities.xml
   fi
-
-  set +e
 
   printf "Pages extracted.\n\n"
 fi
 
 if "${copy_images}"; then
+  "${clean}" && rm -rf "${output_path}/wiki/images"
+  mkdir -p "${output_path}"/{wiki/images,logs}
+
   if ! [[ -s "${output_path}"/image-mappings.xml ]]; then
     echo >&2 "${output_path}/image-mappings.xml does not exist."
     echo >&2 "The page extraction step needs to be run at least once."
@@ -185,70 +197,47 @@ if "${copy_images}"; then
 
   printf "Copying images from attachments\n"
 
-  set -e
-
   if ((debug > 1)); then
     xsltproc "${xslt_params[@]}" image-mappings.xsl "${output_path}/image-mappings.xml"
     "${force}" || read -t 5 -r -p "Press RETURN within 5 seconds to continue"
   fi
 
   if ((debug > 2)); then
-    set -x
-    xsltproc -v "${xslt_params[@]}" \
+    run xsltproc -v "${xslt_params[@]}" \
       image-mappings.xsl \
       "${output_path}/image-mappings.xml" \
       2>"${output_path}/logs/image-mapping.log" |
       bash
-    set +x
-  elif ((debug > 0)); then
-    set -x
-    xsltproc -v "${xslt_params[@]}" \
-      image-mappings.xsl \
-      "${output_path}/image-mappings.xml" |
-      bash
-    set +x
   else
-    xsltproc "${xslt_params[@]}" \
+    run xsltproc "${xslt_params[@]}" \
       image-mappings.xsl \
       "${output_path}/image-mappings.xml" |
       bash
   fi
 
-  set +e
-
   printf "Images copied.\n\n"
 fi
 
 if "${convert_pages}"; then
+  "${clean}" && rm "${output_path}"/wiki/*.md
+
   printf "Converting pages to markdown\n"
 
-  set -e
-
   for page in "${output_path}"/page-xml/*.xml; do
-    xml=${page##${output_path}/page-xml/}
+    xml="${page##"${output_path}"/page-xml/}"
     markdown="${output_path}/wiki/${xml%%.xml}.md"
     log="${output_path}/logs/${xml%%.xml}.log"
 
     if ((debug > 2)); then
-      set -x
-      xsltproc -v --path "${PWD}" \
+      run xsltproc -v --path "${PWD}" \
         "${xslt_params[@]}" \
         page.xsl "${page}" >"${markdown}" 2>"${log}"
-      set +x
-    elif ((debug > 0)); then
-      set -x
-      xsltproc --path "${PWD}" \
-        "${xslt_params[@]}" \
-        page.xsl "${page}" >"${markdown}"
-      set +x
     else
-      xsltproc --path "${PWD}" \
+      run xsltproc --path "${PWD}" \
         "${xslt_params[@]}" \
         page.xsl "${page}" >"${markdown}"
     fi
   done
-
-  set +e
 
   printf "Pages converted.\n"
 fi

@@ -504,16 +504,20 @@
 
   <xsl:template match="ac:link[boolean(ri:page)]">
     <xsl:choose>
-      <xsl:when test="string($confluence-url) and
-        ri:page[not(@ri:space-key=//page/space/key)] and (ac:link-body or ac:plain-text-link-body)">
+      <xsl:when test="string($confluence-url)">
         <xsl:text>[</xsl:text>
-        <xsl:value-of select="@ri:space-key" />
+        <xsl:value-of select="ri:page/@ri:space-key" />
         <xsl:text>: </xsl:text>
-        <xsl:apply-templates select="ac:link-body | ac:plain-text-link-body" mode="title" />
+        <xsl:choose>
+          <xsl:when test="ri:page[not(@ri:space-key=//page/space/key)] and (ac:link-body or ac:plain-text-link-body)">
+            <xsl:value-of select="ac:link-body | ac:plain-text-link-body" mode="title" />
+          </xsl:when>
+          <xsl:otherwise><xsl:value-of select="ri:page/@ri:content-title" /></xsl:otherwise>
+        </xsl:choose>
         <xsl:text>](</xsl:text>
         <xsl:value-of select="$confluence-url" />
         <xsl:text>/wiki/search?spaces=</xsl:text>
-        <xsl:value-of select="@ri:space-key" />
+        <xsl:value-of select="ri:page/@ri:space-key" />
         <xsl:text>&amp;text=</xsl:text>
         <xsl:value-of select="str:encode-uri(ri:page/@ri:content-title, true())" />
         <xsl:text>)</xsl:text>
