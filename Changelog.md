@@ -143,14 +143,16 @@ which this would not have been possible.
 
   - Additional confluence page link cases have been added
 
-    | `$confluence-url` | space-key | link body | result                                            |
-    | ----------------- | --------- | --------- | ------------------------------------------------- |
-    | ~                 | current   | present   | `[link-body](clean-page-filename)`                |
-    | ~                 | missing   | present   | `[link-body](clean-page-filename)`                |
-    | ~                 | missing   | missing   | `[page-title](clean-page-filename)`               |
-    | set               | different | present   | `[space-key: link-body](search-url)`              |
-    | set               | different | missing   | `[space-key: page-title](search-url)`             |
-    | missing           | different | ~         | `Page "page-title" in Confluence Space space-key` |
+    | Case | `$confluence-url` | space-key | link body | result                                              |
+    | ---- | ----------------- | --------- | --------- | --------------------------------------------------- |
+    | 1    | ~                 | current   | present   | `[link-body](clean-page-filename)`                  |
+    | 2    | ~                 | current   | missing   | `[page-title](clean-page-filename)`                 |
+    | 3    | ~                 | missing   | present   | `[link-body](clean-page-filename)`                  |
+    | 4    | ~                 | missing   | missing   | `[page-title](clean-page-filename)`                 |
+    | 5    | set               | different | present   | `[space-key: link-body](search-url)`                |
+    | 6    | set               | different | missing   | `[space-key: page-title](search-url)`               |
+    | 7    | missing           | different | present   | `Page "link-body" in Confluence Space "space-key"`  |
+    | 8    | missing           | different | missing   | `Page "page-title" in Confluence Space "space-key"` |
 
     The `search-url` value is `$confluence-url/wiki/search?spaces=space-key&text=page-title`.
 

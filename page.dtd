@@ -1,3 +1,7 @@
+<!-- <!ENTITY nbsp "&#160;"> -->
+<!-- <!ENTITY nbsp "&amp;nbsp;"> -->
+<!ENTITY nbsp " ">
+
 <!ENTITY AElig "&#198;">
 <!ENTITY Aacute "&#193;">
 <!ENTITY Acirc "&#194;">
@@ -167,7 +171,6 @@
 <!ENTITY minus "&#8722;">
 <!ENTITY mu "&#956;">
 <!ENTITY nabla "&#8711;">
-<!ENTITY nbsp "&amp;nbsp;">
 <!ENTITY ndash "&#8211;">
 <!ENTITY ne "&#8800;">
 <!ENTITY ni "&#8715;">

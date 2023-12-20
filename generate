@@ -9,19 +9,25 @@ Convert a Confluence XML space export to GitHub flavoured Markdown pages.
 
 Options
 
---confluence-url, -u  Sets the URL for Confluence links. This should be the
-                      root URL, as the transformation scripts will add /wiki
+--confluence-url URL  Sets the URL for Confluence links. This should be the
+              -u URL  root URL, as the transformation scripts will add /wiki
                       as required.
---jira-url, -j        Sets the URL for JIRA links. Defaults to the Confluence
-                      URL. The transformation scripts will add /browse as
+--jira-url URL        Sets the URL for JIRA links. Defaults to the Confluence
+        -j URL        URL. The transformation scripts will add /browse as
                       required for ticket links.
---output, -o          Sets the output path.
---input, -i           Sets the input path.
+--output PATH         Sets the output path.
+      -o PATH
+--intput PATH         Sets the intput path.
+      -i PATH
+
+--format, -F          If prettier is installed, runs prettier on the output.
+
 --skip-extract, -E    Skip the page extraction and image mapping step.
 --skip-images, -I     Skip the image copy step.
 --skip-markdown, -M   Skip the page conversion step.
 --clean, -C           Clean the output directory before execution. This will
                       only clean the output required for each step.
+--format
 --force, -f           Force processing.
 --debug, -d           Enable debug output. May be repeated to increase debug
                       level.
@@ -45,12 +51,13 @@ declare -a xslt_params
 declare -i debug
 
 declare extract_pages copy_images convert_pages input_path output_path \
-  force script_path confluence_url jira_url clean
-force=false
+  force script_path confluence_url jira_url clean format
 clean=false
-extract_pages=true
-copy_images=true
 convert_pages=true
+copy_images=true
+extract_pages=true
+force=false
+format=false
 input_path=.
 output_path=out
 script_path="$(
@@ -73,6 +80,7 @@ while (($#)); do
   --skip-extract | -E) extract_pages=false ;;
   --skip-images | -I) copy_images=false ;;
   --skip-markdown | -M) convert_pages=false ;;
+  --format | -F) format=true ;;
   --confluence-url | -u)
     confluence_url="${2:?}"
     xslt_params+=(--stringparam confluence-url "${2:?}")
@@ -154,12 +162,37 @@ ${force:+Overwrite enabled.}
 STEPS
 
 run() {
+  declare -a cmd
   declare -i status
+  declare log capture
+
+  while (($#)); do
+    case "$1" in
+    log=*) log="${1##log=}" ;;
+    capture=*) capture="${1##capture=}" ;;
+    *) cmd+=("$1") ;;
+    esac
+
+    shift
+  done
+
+  set -- "${cmd[@]}"
 
   ((debug > 0)) && echo "$*"
 
-  if ! "$@"; then
-    status=$?
+  if [[ -n "${log}" ]] && [[ -n "${capture}" ]]; then
+    "$@" >"${capture}" 2>"${log}"
+  elif [[ -n "${capture}" ]]; then
+    "$@" >"${capture}"
+  elif [[ -n "${log}" ]]; then
+    "$@" 2>"${log}"
+  else
+    "$@"
+  fi
+
+  status=$?
+
+  if ((status > 0)); then
     echo >&2 "Error ${status} running: $*"
     exit ${status}
   fi
@@ -173,7 +206,7 @@ if "${extract_pages}"; then
   printf "Extracting page XML and image mapping\n"
 
   if ((debug > 2)); then
-    run xsltproc -v "${xslt_params[@]}" entities.xsl "${input_path}"/entities.xml 2>"${output_path}/logs/entities.log"
+    run xsltproc -v "${xslt_params[@]}" entities.xsl "${input_path}"/entities.xml log="${output_path}/logs/entities.log"
   else
     run xsltproc "${xslt_params[@]}" entities.xsl "${input_path}"/entities.xml
   fi
@@ -206,7 +239,7 @@ if "${copy_images}"; then
     run xsltproc -v "${xslt_params[@]}" \
       image-mappings.xsl \
       "${output_path}/image-mappings.xml" \
-      2>"${output_path}/logs/image-mapping.log" |
+      log="${output_path}/logs/image-mapping.log" |
       bash
   else
     run xsltproc "${xslt_params[@]}" \
@@ -219,7 +252,7 @@ if "${copy_images}"; then
 fi
 
 if "${convert_pages}"; then
-  "${clean}" && rm "${output_path}"/wiki/*.md
+  "${clean}" && rm -f "${output_path}"/wiki/*.md
 
   printf "Converting pages to markdown\n"
 
@@ -231,13 +264,22 @@ if "${convert_pages}"; then
     if ((debug > 2)); then
       run xsltproc -v --path "${PWD}" \
         "${xslt_params[@]}" \
-        page.xsl "${page}" >"${markdown}" 2>"${log}"
+        page.xsl "${page}" capture="${markdown}" log="${log}"
     else
       run xsltproc --path "${PWD}" \
         "${xslt_params[@]}" \
-        page.xsl "${page}" >"${markdown}"
+        page.xsl "${page}" capture="${markdown}"
     fi
   done
 
-  printf "Pages converted.\n"
+  printf "Pages converted to markdown.\n"
+
+  if "${format}" && command -v prettier >/dev/null 2>/dev/null; then
+    printf "Formatting markdown pages\n"
+
+    prettier -w "${output_path}/wiki" >/dev/null 2>/dev/null &&
+      prettier -w "${output_path}/wiki" >/dev/null 2>/dev/null
+
+    printf "Formatted markdown.\n"
+  fi
 fi

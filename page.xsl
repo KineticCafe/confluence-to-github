@@ -502,18 +502,59 @@
     <xsl:apply-templates select="ri:url" mode="link" />
   </xsl:template>
 
-  <xsl:template match="ac:link[boolean(ri:page)]">
+  <!--
+       | Case | `$confluence-url` | space-key | link body | result                                              |
+       | ==== | ================= | ========= | ========= | =================================================== |
+       | 1    | ~                 | current   | present   | `[link-body](clean-page-filename)`                  |
+       | 2    | ~                 | current   | missing   | `[page-title](clean-page-filename)`                 |
+       | 3    | ~                 | missing   | present   | `[link-body](clean-page-filename)`                  |
+       | 4    | ~                 | missing   | missing   | `[page-title](clean-page-filename)`                 |
+       | 5    | set               | different | present   | `[space-key: link-body](search-url)`                |
+       | 6    | set               | different | missing   | `[space-key: page-title](search-url)`               |
+       | 7    | missing           | different | present   | `Page "link-body" in Confluence Space "space-key"`  |
+       | 8    | missing           | different | missing   | `Page "page-title" in Confluence Space "space-key"` |
+  -->
+
+  <!-- page link case 1: same space key + link body -->
+  <xsl:template match="ac:link[ri:page[boolean(@ri:space-key) and @ri:space-key=//page/space/key]
+      and (ac:link-body or ac:plain-text-link-body)
+    ]">
+    <xsl:apply-templates select="ac:link-body | ac:plain-text-link-body" mode="title" />
+    <xsl:apply-templates select="ri:page" mode="link" />
+  </xsl:template>
+
+  <!-- page link case 2: same space key  -->
+  <xsl:template match="ac:link[ri:page[boolean(@ri:space-key) and @ri:space-key=//page/space/key]
+      and not(ac:link-body or ac:plain-text-link-body)
+    ]">
+    <xsl:apply-templates select="ri:page" mode="title" />
+    <xsl:apply-templates select="ri:page" mode="link" />
+  </xsl:template>
+
+  <!-- page link case 3: link body -->
+  <xsl:template match="ac:link[ri:page[not(@ri:space-key)] and (ac:link-body or ac:plain-text-link-body)]">
+    <xsl:apply-templates select="ac:link-body | ac:plain-text-link-body" mode="title" />
+    <xsl:apply-templates select="ri:page" mode="link" />
+  </xsl:template>
+
+  <!-- page link case 4: same space key  -->
+  <xsl:template match="ac:link[ri:page[not(@ri:space-key)] and not(ac:link-body or ac:plain-text-link-body)]">
+    <xsl:apply-templates select="ri:page" mode="title" />
+    <xsl:apply-templates select="ri:page" mode="link" />
+  </xsl:template>
+
+  <!-- page link cases 5 & 7 -->
+  <xsl:template match="ac:link[
+      ri:page[boolean(@ri:space-key) and not(@ri:space-key=//page/space/key)]
+      and (ac:link-body or ac:plain-text-link-body)
+    ]">
     <xsl:choose>
       <xsl:when test="string($confluence-url)">
+        <!-- page link case 5: $confluence-url + different space key + link body -->
         <xsl:text>[</xsl:text>
         <xsl:value-of select="ri:page/@ri:space-key" />
         <xsl:text>: </xsl:text>
-        <xsl:choose>
-          <xsl:when test="ri:page[not(@ri:space-key=//page/space/key)] and (ac:link-body or ac:plain-text-link-body)">
-            <xsl:value-of select="ac:link-body | ac:plain-text-link-body" mode="title" />
-          </xsl:when>
-          <xsl:otherwise><xsl:value-of select="ri:page/@ri:content-title" /></xsl:otherwise>
-        </xsl:choose>
+        <xsl:value-of select="ac:link-body | ac:plain-text-link-body" />
         <xsl:text>](</xsl:text>
         <xsl:value-of select="$confluence-url" />
         <xsl:text>/wiki/search?spaces=</xsl:text>
@@ -522,13 +563,45 @@
         <xsl:value-of select="str:encode-uri(ri:page/@ri:content-title, true())" />
         <xsl:text>)</xsl:text>
       </xsl:when>
-      <xsl:when test="ac:link-body | ac:plain-text-link-body">
-        <xsl:apply-templates select="ac:link-body | ac:plain-text-link-body" mode="title" />
-        <xsl:apply-templates select="ri:page" mode="link" />
-      </xsl:when>
       <xsl:otherwise>
-        <xsl:apply-templates select="ri:page" mode="title" />
-        <xsl:apply-templates select="ri:page" mode="link" />
+        <!-- page link case 7 different space key + link body -->
+        <xsl:text>Page &quot;</xsl:text>
+        <xsl:value-of select="ac:link-body | ac:plain-text-link-body" />
+        <xsl:text>&quot; in Confluence Space &quot;</xsl:text>
+        <xsl:value-of select="ri:page/@ri:space-key" />
+        <xsl:text>&quot;</xsl:text>
+      </xsl:otherwise>
+    </xsl:choose>
+  </xsl:template>
+
+  <!-- page link cases 6 & 8 -->
+  <xsl:template match="ac:link[
+      ri:page[boolean(@ri:space-key) and not(@ri:space-key=//page/space/key)]
+      and not(ac:link-body or ac:plain-text-link-body)
+    ]">
+    <xsl:choose>
+      <xsl:when test="string($confluence-url)">
+        <!-- page link case 6: $confluence-url + different space key -->
+        <xsl:text>[</xsl:text>
+        <xsl:value-of select="ri:page/@ri:space-key" />
+        <xsl:text>: </xsl:text>
+        <xsl:value-of select="ri:page/@ri:content-title" />
+        <xsl:text>](</xsl:text>
+        <xsl:value-of select="$confluence-url" />
+        <xsl:text>/wiki/search?spaces=</xsl:text>
+        <xsl:value-of select="ri:page/@ri:space-key" />
+        <xsl:text>&amp;text=</xsl:text>
+        <xsl:value-of select="str:encode-uri(ri:page/@ri:content-title, true())" />
+        <xsl:text>)</xsl:text>
+      </xsl:when>
+
+      <!-- page link case 8 different space key -->
+      <xsl:otherwise>
+        <xsl:text>Page &quot;</xsl:text>
+        <xsl:value-of select="ri:page/@ri:content-title" />
+        <xsl:text>&quot; in Confluence Space &quot;</xsl:text>
+        <xsl:value-of select="ri:page/@ri:space-key" />
+        <xsl:text>&quot;</xsl:text>
       </xsl:otherwise>
     </xsl:choose>
   </xsl:template>
@@ -984,7 +1057,7 @@
     <xsl:value-of select="title" />
     <xsl:text>](</xsl:text>
     <xsl:value-of select="filename" />
-    <xsl:text>)</xsl:text>
+    <xsl:text>.md)</xsl:text>
     <xsl:if test="position() = last()">
       <xsl:value-of select="$newline" />
       <xsl:value-of select="$newline" />
